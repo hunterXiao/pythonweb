@@ -1,6 +1,6 @@
 #-*- coding:utf8 -*-
 
-import logging,threading
+import logging,threading,functools
 
 class Dict(dict):
 	"""docstring for Dict"""
@@ -75,4 +75,38 @@ def create_engine(user,password,host,database,port,**kw):
 	import mysql.connector
 	if engine is not None:
 		raise DBError('DB engine has already initizilied!')
-	
+	params = dict(user=user,password=password,host=host,database=database,port=port)
+	defaults = dict(use_unicode=True,charset='utf8',collation='utf8_general_ci',autocommit=False)
+	for k,v in defaults.iteritems():
+		params[k]=kw.pop(k,v)
+	params.update(kw)
+	params['buffered']=True
+	engine=_Engine(lambda:mysql.connector.connect(**params))
+
+class _ConnectionCtx(object):
+	"""docstring for _ConnectionCtx"""
+	def __enter__(self):
+		global _db_ctx
+		self.should_cleanup=False
+		if not _db_ctx.is_init():
+			_db_ctx.init()
+			self.should_cleanup=True
+		return self
+
+	def __exit__(self,exctype,excvalue,traceback):
+		global _db_ctx
+		if self.should_cleanup:
+			_db_ctx.cleanup()
+
+def connection():
+	return _ConnectionCtx()
+
+def with_connection(func):
+	'''
+	Decorator for reuse connection
+	'''
+	@functools.wraps(func)
+	def _wrap(*args,**kw):
+		with _ConnectionCtx():
+			return func(*args,**kw)
+	return _wrap
