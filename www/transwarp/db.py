@@ -110,3 +110,109 @@ def with_connection(func):
 		with _ConnectionCtx():
 			return func(*args,**kw)
 	return _wrap
+
+class _TransactonCtx(object):
+	"""docstring for _TransactonCtx"""
+	def __enter__(self):
+		global _db_ctx
+		self.should_close_conn=False
+		if not _db_ctx.is_init():
+			_db_ctx.init()
+			self.should_close_conn=True
+		_db_ctx.transaction=_db_ctx.transaction+1
+		return self
+
+	def __exit__(self,exctype,excvalue,traceback):
+		global _db_ctx
+		_db_ctx.transaction=_db_ctx.transaction-1
+		try:
+			if _db_ctx.transaction==0:
+				if exctype is None:
+					self.commit()
+				else:
+					self.rollback()
+		finally:
+			if self.should_close_conn:
+				_db_ctx.cleanup()
+
+	def commit(self):
+		global _db_ctx
+		try:
+			_db_ctx.connection.commit()
+		except:
+			raise
+
+	def rollback(self):
+		global _db_ctx
+		_db_ctx.connection.rollback()
+
+def transaction():
+	return _TransactonCtx()
+
+def with_transaction(func):
+	@functools.wraps(func)
+	def _wrapper(*args,**kw):
+		with _TransactionCtx():
+			return func(*args,**kw)
+	return _wrapper
+
+
+
+def _select(sql,first,*args):
+	global _db_ctx
+	cursor=None
+	sql=sql.replace('?','%s')
+	try:
+		cursor=_db_ctx.connection.cursor()
+		cursor.execute(sql,*args)
+		if cursor.description:
+			names=[x[0] for x in cursor.description]
+		if first:
+			values=cursor.fetchone()
+			if not values:
+				return None
+			return Dict(names,values)
+		return [Dict(names,x) for x in cursor.fetchall()]
+	finally:
+		if cursor:
+			cursor.close()
+
+@with_connection
+def select_one(sql,*args):
+	return _select(sql,True,*args)
+
+@with_connection
+def select_int(sql,*args):
+	d=_select(sql,True,*args)
+	if len(d) !=1:
+		raise MultiColumnsError()
+	return d.values()[0]
+
+@with_connection
+def select(sql,*args):
+	return _select(sql,False,*args)
+
+
+@with_connection
+def _update(sql,*args):
+	global _db_ctx
+	cursor=None
+	sql=sql.replace('?','%s')
+	try:
+		cursor=_db_ctx.connection.cursor()
+		cursor.excute(sql,*args)
+		r=cursor.rawcount
+		if _db_ctx.transaction==0:
+			_db_ctx.connection.commit()
+		return r
+	finally:
+		if cursor:
+			cursor.close()
+
+def insert(table,*kwargs):
+	cols,args = zip(*kwargs.iteritems())
+	sql = "insert into %s (%s) values(%s)"%(table,','.join(cols),','.join(['?' for i in range(len(cols))]))
+	return _update(sql,*args)
+
+def update(sql,*args):
+	return _update(sql,*args)
