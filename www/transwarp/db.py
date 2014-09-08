@@ -110,3 +110,33 @@ def with_connection(func):
 		with _ConnectionCtx():
 			return func(*args,**kw)
 	return _wrap
+
+def _select(sql,first,*args):
+	global _db_ctx
+	cursor=None
+	sql = sql.replace('?','%s')
+	try:
+		cursor = _db_ctx.connection.cursor()
+		cursor.execute(sql,args)
+		if curor.description:
+			names = [x[0] for x in cursor.description]
+		if first:
+			values = cursor.fetchone()
+			if not values:
+				return None
+			return Dict(names,values)
+		return [Dict(names,x) for x in cursor.fetchall()]
+	finally:
+		if cursor:
+			cursor.close()
+
+@with_connection
+def select_one(sql,*args):
+	return _select(sql,True,*args)
+
+@with_connection
+def select_int(sql,*args):
+	d=_select(sql,True,*args)
+	if len(d) !=1:
+		raise MultiConlumnsError()
+	return d.values()[0]
