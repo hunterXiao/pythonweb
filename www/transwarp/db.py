@@ -111,7 +111,6 @@ def with_connection(func):
 			return func(*args,**kw)
 	return _wrap
 
-<<<<<<< HEAD
 def _select(sql,first,*args):
 	global _db_ctx
 	cursor=None
@@ -123,9 +122,14 @@ def _select(sql,first,*args):
 			names = [x[0] for x in cursor.description]
 		if first:
 			values = cursor.fetchone()
-=======
-class _TransactonCtx(object):
-	"""docstring for _TransactonCtx"""
+			return Dict(names,values)
+		return [Dict(names,x) for x in cursor.fetchall()]
+	finally:
+		if cursor:
+			cursor.close()
+
+class _TransactionCtx(object):
+	"""docstring for _TransactionCtx"""
 	def __enter__(self):
 		global _db_ctx
 		self.should_close_conn=False
@@ -160,7 +164,7 @@ class _TransactonCtx(object):
 		_db_ctx.connection.rollback()
 
 def transaction():
-	return _TransactonCtx()
+	return _TransactionCtx()
 
 def with_transaction(func):
 	@functools.wraps(func)
@@ -182,7 +186,6 @@ def _select(sql,first,*args):
 			names=[x[0] for x in cursor.description]
 		if first:
 			values=cursor.fetchone()
->>>>>>> origin/master
 			if not values:
 				return None
 			return Dict(names,values)
@@ -199,11 +202,7 @@ def select_one(sql,*args):
 def select_int(sql,*args):
 	d=_select(sql,True,*args)
 	if len(d) !=1:
-<<<<<<< HEAD
 		raise MultiConlumnsError()
-	return d.values()[0]
-=======
-		raise MultiColumnsError()
 	return d.values()[0]
 
 @with_connection
@@ -234,4 +233,3 @@ def insert(table,*kwargs):
 
 def update(sql,*args):
 	return _update(sql,*args)
->>>>>>> origin/master
